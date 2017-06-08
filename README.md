@@ -1,6 +1,6 @@
 # TaaS 平台样例模型训练样例任务代码
 
-本目录下提供了一些在 TaaS 平台（[公有云平台](taas.caicloud.io)）上分布式执行的模型训练任务代码。
+本目录下提供了一些在 TaaS 平台（[公有云平台](https://taas.caicloud.io)）上分布式执行的模型训练任务代码。
 
 ## half\_plus\_two
 
