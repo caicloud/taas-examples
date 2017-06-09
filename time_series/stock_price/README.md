@@ -21,7 +21,7 @@ Date,Open,High,Low,Close,Volume,Adj Close
 ./train_model.sh
 ```
 
-运行改脚本可以得到类似下面的结果：
+运行该脚本可以得到类似下面的结果：
 ```
 Training begins @ 2017-06-09 06:53:32.803296
 Training loss at round 42 is: 0.872574619906, Testing loss is 1.60780370235, Learning rate is 0.0010000000475
