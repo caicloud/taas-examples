@@ -13,7 +13,7 @@ tf.app.flags.DEFINE_integer("rnn_hidden_nodes", 10, "Number of nodes in the LSTM
 tf.app.flags.DEFINE_integer("rnn_num_steps", 20, "The length of the RNN structure.")
 tf.app.flags.DEFINE_integer("batch_size", 128, "training batch size.")
 tf.app.flags.DEFINE_float("learning_rate_base", 0.001, "base learning rate.")
-tf.app.flags.DEFINE_float("learning_rate_decay", 0.99, "learning rate decay.")
+tf.app.flags.DEFINE_float("learning_rate_decay", 0.999, "learning rate decay.")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -130,7 +130,6 @@ def train_fn(session, num_global_step):
 def after_train_hook(session):
     global _train_x, _train_y, _X, _Y, _test_x, _test_y, _pred, _std, _mean
     print("Training done.")
-    print(dist_base.cfg.logdir)
     
     predicted = session.run(_pred, feed_dict={_X:_train_x})
     predicted = np.asarray(predicted) * _std[LABEL_INDEX] + _mean[LABEL_INDEX]
@@ -142,8 +141,8 @@ def after_train_hook(session):
     plt.savefig(os.path.join(dist_base.cfg.logdir, "training_performance.jpg"))
     
     predicted = session.run(_pred, feed_dict={_X:_test_x}) 
-    predicted = np.asarray(predicted) * std[LABEL_INDEX] + mean[LABEL_INDEX]
-    true_y = np.asarray(_test_y) * std[LABEL_INDEX] + mean[LABEL_INDEX]
+    predicted = np.asarray(predicted) * _std[LABEL_INDEX] + _mean[LABEL_INDEX]
+    true_y = np.asarray(_test_y) * _std[LABEL_INDEX] + _mean[LABEL_INDEX]
     plt.figure()
     plt.plot(list(range(len(predicted))), predicted, color='b', label='Predicted')
     plt.plot(list(range(len(true_y))), true_y, color='r', label='True Data')
