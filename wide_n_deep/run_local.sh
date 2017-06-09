@@ -15,4 +15,4 @@
 # limitations under the License.
 # ==============================================================================
 
-TF_MAX_STEPS=200 TF_LOGDIR=./model python ./wide_n_deep_taas.py
+TF_MAX_STEPS=200 TF_LOGDIR=./log python ./wide_n_deep.py
