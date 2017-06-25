@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-
 import tensorflow as tf
+from caicloud.clever.tensorflow import dist_base
 from tensorflow.examples.tutorials.mnist import input_data
 from tflearn.layers.core import dropout, fully_connected
 from tflearn.layers.conv import conv_2d, max_pool_2d
@@ -12,7 +12,13 @@ BATCH_SIZE = 100     # 每次batch打包的样本个数
 
 # 模型相关的参数
 LEARNING_RATE = 0.05      
-TRAINING_STEPS = 5000
+
+x = None
+y_ = None
+train_op = None
+accuracy = None
+local_step = 0
+mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
 
 def inference(input_tensor):
     input_tensor = tf.reshape(input_tensor, [-1, 28, 28, 1])
@@ -27,7 +33,8 @@ def inference(input_tensor):
     network = fully_connected(network, 10, activation='softmax')
     return network
 
-def define_graph():
+def model_fn(sync, num_replicas):
+    global x, y_, train_op, accuracy
     x = tf.placeholder(tf.float32, [None, INPUT_NODE], name='x-input')
     y_ = tf.placeholder(tf.float32, [None, OUTPUT_NODE], name='y-input')
     
@@ -42,44 +49,53 @@ def define_graph():
     cross_entropy_mean = tf.reduce_mean(cross_entropy)
     
     # 优化损失函数
-    train_op = tf.train.GradientDescentOptimizer(LEARNING_RATE).minimize(
-        cross_entropy_mean, global_step=global_step)
+    optimizer = tf.train.GradientDescentOptimizer(LEARNING_RATE)
+    if sync:
+        num_workers = num_replicas
+        optimizer = tf.train.SyncReplicasOptimizer(
+            optimizer,
+            replicas_to_aggregate=num_workers,
+            total_num_replicas=num_workers,
+            name="mnist_sync_replicas")
+    train_op = optimizer.minimize(cross_entropy_mean, global_step=global_step)
     
     # 计算正确率
     correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     
-    return x, y_, train_op, accuracy
+    return dist_base.ModelFnHandler(
+        global_step=global_step,
+        optimizer=optimizer,
+        summary_op=None)
 
-def train(x, y_, train_op, accuracy, mnist):
-    # 初始化会话，并开始训练过程。
-    sess = tf.Session()
-    sess.run(tf.global_variables_initializer())
-    validate_feed = {x: mnist.validation.images, y_: mnist.validation.labels}
-            
-    # 循环的训练神经网络。
-    for i in range(TRAINING_STEPS):
-        if i % 1000 == 0:
-            validate_acc = sess.run(accuracy, feed_dict=validate_feed)
-            print("After %d training step(s), validation accuracy using average model is %g " % (i, validate_acc))
-            
-        xs, ys = mnist.train.next_batch(BATCH_SIZE)
-        sess.run(train_op,feed_dict={x:xs,y_:ys})
+def train_fn(sess, num_global_step):
+    global x, y_, train_op, accuracy, local_step, mnist
+
+    if local_step % 1000 == 0:
+        validate_acc = sess.run(
+            accuracy, 
+            feed_dict={x: mnist.validation.images, 
+                       y_: mnist.validation.labels})
+        print("After %d training step(s), validation accuracy using average model is %g " % (
+            num_global_step, validate_acc))
+
+    local_step += 1
+    xs, ys = mnist.train.next_batch(BATCH_SIZE)
+    sess.run(train_op,feed_dict={x:xs,y_:ys})
     
-    return sess
+    return False
 
-def test(x, y_, accuracy, mnist, sess):
-    test_feed = {x: mnist.test.images, y_: mnist.test.labels} 
+def after_train_hook(sess):
+    global x, y_, train_op, accuracy, mnist
+
+    test_feed = {x: mnist.test.images, y_: mnist.test.labels}
     test_acc = sess.run(accuracy,feed_dict=test_feed)
-    print(("After %d training step(s), test accuracy using average model is %g" %(TRAINING_STEPS, test_acc)))
+    print(("Test accuracy using average model is %g" %(test_acc)))
 
-def main(argv=None):
-    mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
-    x, y_, train_op, accuracy = define_graph()
-    sess = train(x, y_, train_op, accuracy, mnist)
-    test(x, y_, accuracy, mnist, sess)
-    sess.close()
-    
 if __name__=='__main__':
-    main()
+    distTfRunner = dist_base.DistTensorflowRunner(
+        model_fn=model_fn,
+        after_train_hook=after_train_hook)
+    distTfRunner.run(train_fn)
+
 
