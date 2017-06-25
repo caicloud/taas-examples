@@ -32,13 +32,20 @@ f = open('all_data.csv')
 df = pd.read_csv(f)
 dataset = df.iloc[:, 1:].values
 
-_mean = np.mean(dataset, axis=0)
-_std = np.std(dataset, axis=0)
-dataset = (dataset - _mean) / _std
+
 
 train_size = int(len(dataset) * 0.9)
 test_size = len(dataset) - train_size
-train, test = dataset[:train_size, :], dataset[train_size:len(dataset), :]
+
+train_mean = np.mean(dataset[:train_size, :], axis=0)
+train_std = np.std(dataset[:train_size, :], axis=0)
+
+test_mean = np.mean(dataset[train_size:len(dataset), :], axis=0)
+test_std = np.std(dataset[train_size:len(dataset), :], axis=0)
+
+train = (dataset[:train_size, :] - train_mean) / train_std
+test = (dataset[train_size:len(dataset), :] - test_mean) / test_std
+# train, test = dataset[:train_size, :], dataset[train_size:len(dataset), :]
 print(len(train), len(test))
 
 def create_dataset(dataset):
@@ -131,12 +138,12 @@ def train_fn(session, num_global_step):
     return False
 
 def after_train_hook(session):
-    global _train_x, _train_y, _X, _Y, _test_x, _test_y, _pred, _std, _mean
+    global _train_x, _train_y, _X, _Y, _test_x, _test_y, _pred, train_std, train_mean, test_std, test_mean
     print("Training done.")
     
     predicted = session.run(_pred, feed_dict={_X:_train_x})
-    predicted = np.asarray(predicted) * _std[LABEL_INDEX] + _mean[LABEL_INDEX]
-    true_y = np.asarray(_train_y) * _std[LABEL_INDEX] + _mean[LABEL_INDEX]
+    predicted = np.asarray(predicted) * train_std[LABEL_INDEX] + train_mean[LABEL_INDEX]
+    true_y = np.asarray(_train_y) * train_std[LABEL_INDEX] + train_mean[LABEL_INDEX]
     plt.figure()
     plt.plot(list(range(len(predicted))), predicted, color='b', label='Predicted')
     plt.plot(list(range(len(true_y))), true_y, color='r', label='True Data')
@@ -144,8 +151,8 @@ def after_train_hook(session):
     plt.savefig(os.path.join(dist_base.cfg.logdir, "training_performance.jpg"))
     
     predicted = session.run(_pred, feed_dict={_X:_test_x}) 
-    predicted = np.asarray(predicted) * _std[LABEL_INDEX] + _mean[LABEL_INDEX]
-    true_y = np.asarray(_test_y) * _std[LABEL_INDEX] + _mean[LABEL_INDEX]
+    predicted = np.asarray(predicted) * test_std[LABEL_INDEX] + test_mean[LABEL_INDEX]
+    true_y = np.asarray(_test_y) * test_std[LABEL_INDEX] + test_mean[LABEL_INDEX]
     plt.figure()
     plt.plot(list(range(len(predicted))), predicted, color='b', label='Predicted')
     plt.plot(list(range(len(true_y))), true_y, color='r', label='True Data')
