@@ -52,11 +52,12 @@ def create_dataset(dataset):
 _train_x, _train_y = create_dataset(_train)
 _test_x, _test_y = create_dataset(_test)
 
+SEED = 0
 
 def lstm(X):
     batch_size = tf.shape(X)[0]
 
-    w_in = tf.Variable(tf.random_normal([NUM_FEATURES, FLAGS.rnn_hidden_nodes]))
+    w_in = tf.Variable(tf.random_normal([NUM_FEATURES, FLAGS.rnn_hidden_nodes], seed=SEED))
     b_in = tf.Variable(tf.constant(0.1, shape=[FLAGS.rnn_hidden_nodes]))
     
     input = tf.reshape(X, [-1, NUM_FEATURES])
@@ -69,11 +70,10 @@ def lstm(X):
     output_rnn, final_states = tf.nn.dynamic_rnn(cell, input_rnn, initial_state=init_state, dtype=tf.float32)
     output = output_rnn[:, -1, :]
     
-    w_out = tf.Variable(tf.random_normal([FLAGS.rnn_hidden_nodes, 1]))
+    w_out = tf.Variable(tf.random_normal([FLAGS.rnn_hidden_nodes, 1], seed=SEED))
     b_out = tf.Variable(tf.constant(0.1, shape=[1]))
     pred = tf.matmul(output, w_out) + b_out
     return pred
-
 
 def model_fn(sync, num_replicas):
     global _train_op, _loss, _train_x, _test_x, _test_y, _pred, _learning_rate, _X, _Y, _n_rounds
@@ -121,7 +121,7 @@ def train_fn(session, num_global_step):
                           feed_dict={_X:_train_x[_start_index:_end_index], _Y:_train_y[_start_index:_end_index]})
     _current_loss += loss
             
-    if _end_index == len(_train_x):
+    if _end_index % len(_train_x) == 5000:
         loss = session.run(_loss, feed_dict={_X:_test_x, _Y:_test_y})
         print("Training loss at round {} is: {}, Testing loss is {}, Learning rate is {}".format(
             num_global_step, _current_loss / _n_rounds, loss, lr))
@@ -132,14 +132,10 @@ def train_fn(session, num_global_step):
        
     return False
 
-def inverse_transform(scaler, dataset, y):
-    nrow, ncol = dataset.shape
-    dataset_xy = np.zeros([nrow - FLAGS.rnn_num_steps, ncol])    # N - 20行   
-    dataset_xy[:, LABEL_INDEX] = np.squeeze(y)
-    dataset_ = scaler.inverse_transform(dataset_xy)
-       
-    return dataset_[:, LABEL_INDEX]
 
+
+def inverse_transform(scaler, y):
+    return y / scaler.scale_[LABEL_INDEX] + scaler.data_min_[LABEL_INDEX]
 
 
 def after_train_hook(session):
@@ -149,8 +145,8 @@ def after_train_hook(session):
     predicted = session.run(_pred, feed_dict={_X:_train_x})
     #predicted = np.asarray(predicted) * train_std[LABEL_INDEX] + train_mean[LABEL_INDEX]
     #true_y = np.asarray(_train_y) * train_std[LABEL_INDEX] + train_mean[LABEL_INDEX]
-    predicted = inverse_transform(scaler, train, predicted)
-    true_y = inverse_transform(scaler, train, _train_y)
+    predicted = inverse_transform(scaler, predicted)
+    true_y = inverse_transform(scaler, _train_y)
     
     plt.figure()
     plt.plot(list(range(len(predicted))), predicted, color='b', label='Predicted')
@@ -161,8 +157,9 @@ def after_train_hook(session):
     predicted = session.run(_pred, feed_dict={_X:_test_x}) 
     #predicted = np.asarray(predicted) * test_std[LABEL_INDEX] + test_mean[LABEL_INDEX]
     #true_y = np.asarray(_test_y) * test_std[LABEL_INDEX] + test_mean[LABEL_INDEX]
-    predicted = inverse_transform(scaler, test, predicted)
-    true_y = inverse_transform(scaler, test, _test_y)
+    predicted = inverse_transform(scaler, predicted)
+    true_y = inverse_transform(scaler, _test_y)
+
     plt.figure()
     plt.plot(list(range(len(predicted))), predicted, color='b', label='Predicted')
     plt.plot(list(range(len(true_y))), true_y, color='r', label='True Data')
