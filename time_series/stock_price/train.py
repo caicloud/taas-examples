@@ -9,6 +9,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import rnn  
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
 
 from caicloud.clever.tensorflow import dist_base
 
@@ -28,35 +29,28 @@ _start_index = 0
 _end_index = 0 
 _n_rounds = 0
 
-f = open('all_data.csv') 
-df = pd.read_csv(f)
+df = pd.read_csv('all_data.csv')
 dataset = df.iloc[:, 1:].values
 
-
-
 train_size = int(len(dataset) * 0.9)
-test_size = len(dataset) - train_size
-
-train_mean = np.mean(dataset[:train_size, :], axis=0)
-train_std = np.std(dataset[:train_size, :], axis=0)
-
-test_mean = np.mean(dataset[train_size:len(dataset), :], axis=0)
-test_std = np.std(dataset[train_size:len(dataset), :], axis=0)
-
-train = (dataset[:train_size, :] - train_mean) / train_std
-test = (dataset[train_size:len(dataset), :] - test_mean) / test_std
-# train, test = dataset[:train_size, :], dataset[train_size:len(dataset), :]
+train = dataset[:train_size, :]
+test = dataset[train_size:, :]
 print(len(train), len(test))
+
+scaler = MinMaxScaler()
+_train = scaler.fit_transform(train)
+_test  = scaler.transform(test)
 
 def create_dataset(dataset):
     dataX, dataY = [], []
-    for i in range(len(dataset) - FLAGS.rnn_num_steps - 1):
+    for i in range(len(dataset) - FLAGS.rnn_num_steps):
         a = dataset[i:(i + FLAGS.rnn_num_steps), :]
         dataX.append(a.tolist())
         dataY.append([dataset[i + FLAGS.rnn_num_steps, LABEL_INDEX]])
     return dataX, dataY
-_train_x, _train_y = create_dataset(train)
-_test_x, _test_y = create_dataset(test)
+
+_train_x, _train_y = create_dataset(_train)
+_test_x, _test_y = create_dataset(_test)
 
 
 def lstm(X):
@@ -79,6 +73,7 @@ def lstm(X):
     b_out = tf.Variable(tf.constant(0.1, shape=[1]))
     pred = tf.matmul(output, w_out) + b_out
     return pred
+
 
 def model_fn(sync, num_replicas):
     global _train_op, _loss, _train_x, _test_x, _test_y, _pred, _learning_rate, _X, _Y, _n_rounds
@@ -137,13 +132,26 @@ def train_fn(session, num_global_step):
        
     return False
 
+def inverse_transform(scaler, dataset, y):
+    nrow, ncol = dataset.shape
+    dataset_xy = np.zeros([nrow - FLAGS.rnn_num_steps, ncol])    # N - 20行   
+    dataset_xy[:, LABEL_INDEX] = np.squeeze(y)
+    dataset_ = scaler.inverse_transform(dataset_xy)
+       
+    return dataset_[:, LABEL_INDEX]
+
+
+
 def after_train_hook(session):
     global _train_x, _train_y, _X, _Y, _test_x, _test_y, _pred, train_std, train_mean, test_std, test_mean
     print("Training done.")
     
     predicted = session.run(_pred, feed_dict={_X:_train_x})
-    predicted = np.asarray(predicted) * train_std[LABEL_INDEX] + train_mean[LABEL_INDEX]
-    true_y = np.asarray(_train_y) * train_std[LABEL_INDEX] + train_mean[LABEL_INDEX]
+    #predicted = np.asarray(predicted) * train_std[LABEL_INDEX] + train_mean[LABEL_INDEX]
+    #true_y = np.asarray(_train_y) * train_std[LABEL_INDEX] + train_mean[LABEL_INDEX]
+    predicted = inverse_transform(scaler, train, predicted)
+    true_y = inverse_transform(scaler, train, _train_y)
+    
     plt.figure()
     plt.plot(list(range(len(predicted))), predicted, color='b', label='Predicted')
     plt.plot(list(range(len(true_y))), true_y, color='r', label='True Data')
@@ -151,8 +159,10 @@ def after_train_hook(session):
     plt.savefig(os.path.join(dist_base.cfg.logdir, "training_performance.jpg"))
     
     predicted = session.run(_pred, feed_dict={_X:_test_x}) 
-    predicted = np.asarray(predicted) * test_std[LABEL_INDEX] + test_mean[LABEL_INDEX]
-    true_y = np.asarray(_test_y) * test_std[LABEL_INDEX] + test_mean[LABEL_INDEX]
+    #predicted = np.asarray(predicted) * test_std[LABEL_INDEX] + test_mean[LABEL_INDEX]
+    #true_y = np.asarray(_test_y) * test_std[LABEL_INDEX] + test_mean[LABEL_INDEX]
+    predicted = inverse_transform(scaler, test, predicted)
+    true_y = inverse_transform(scaler, test, _test_y)
     plt.figure()
     plt.plot(list(range(len(predicted))), predicted, color='b', label='Predicted')
     plt.plot(list(range(len(true_y))), true_y, color='r', label='True Data')
