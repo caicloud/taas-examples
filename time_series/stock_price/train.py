@@ -121,7 +121,7 @@ def train_fn(session, num_global_step):
                           feed_dict={_X:_train_x[_start_index:_end_index], _Y:_train_y[_start_index:_end_index]})
     _current_loss += loss
             
-    if _end_index % len(_train_x) == 5000:
+    if _end_index == len(_train_x):
         loss = session.run(_loss, feed_dict={_X:_test_x, _Y:_test_y})
         print("Training loss at round {} is: {}, Testing loss is {}, Learning rate is {}".format(
             num_global_step, _current_loss / _n_rounds, loss, lr))
